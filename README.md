@@ -1,2 +1,2 @@
 # ongconecta
-repositório para experimentações DevOps
+Repositório para experimentações DevOps
