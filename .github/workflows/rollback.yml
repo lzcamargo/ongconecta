@@ -1,0 +1,91 @@
+# Rollback para uma baseline anterior — PGC 6.4
+#
+# Aba Actions -> "Rollback" -> Run workflow -> informe a tag (ex.: v1.2.0).
+# Reconstrói a web exatamente a partir daquela tag e publica em produção,
+# passando pelo MESMO gate de aprovação do Environment "production".
+#
+# Alternativa ainda mais simples: abrir a execução antiga do workflow CD
+# e clicar em "Re-run jobs" -> só o job de produção (usa o artefato guardado).
+#
+# Diferente do `git revert` (Exercício 6.4), aqui o código na main não muda:
+# só a produção volta. Depois, corrija a main com um revert ou um fix.
+
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag da versão para a qual voltar (ex.: v1.2.0)'
+        required: true
+        type: string
+
+concurrency:
+  group: cd-refs/heads/main # compartilha a fila com o CD: nunca roda junto com um deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  SITE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+
+jobs:
+  rollback:
+    name: Rollback para ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ env.SITE }}/
+    steps:
+      - name: Validar formato da tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || {
+            echo "::error::Tag inválida: use o formato vX.Y.Z"; exit 1; }
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build da versão antiga
+        working-directory: web
+        env:
+          VITE_APP_VERSION: ${{ inputs.tag }} (rollback)
+          VITE_API_URL: ${{ vars.API_URL }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Publicar em produção
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web/dist
+          keep_files: true
+          commit_message: 'rollback(producao): ${{ inputs.tag }}'
+
+      - name: Smoke test
+        run: |
+          # O script vem da main (a tag antiga pode não ter o script).
+          git fetch --depth 1 origin main
+          git show origin/main:scripts/aguardar-deploy.sh > /tmp/aguardar-deploy.sh
+          bash /tmp/aguardar-deploy.sh "$SITE/" web/dist
+
+      - name: Registrar no resumo da execução (auditoria — PGC 10.3)
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          {
+            echo "## Rollback executado"
+            echo "- Produção voltou para **$TAG**"
+            echo "- Solicitado por: @$GITHUB_ACTOR"
+            echo "- Lembrete: abra uma Issue explicando o motivo e corrija a main."
+          } >> "$GITHUB_STEP_SUMMARY"

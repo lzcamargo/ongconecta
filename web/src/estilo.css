@@ -1,0 +1,67 @@
+:root {
+  --fundo: #f7f6f2;
+  --texto: #1f2a24;
+  --destaque: #2f6f4f;
+  --erro: #b3261e;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--texto);
+  background: var(--fundo);
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 {
+  color: var(--destaque);
+  margin-bottom: 4px;
+}
+
+.ambiente {
+  margin-top: 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+form {
+  display: grid;
+  gap: 8px;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-weight: 600;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #c8c5bb;
+}
+
+button {
+  background: var(--destaque);
+  color: white;
+  border: none;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+[role='alert'] {
+  color: var(--erro);
+  font-size: 0.9rem;
+}
+
+.mensagem {
+  font-weight: 600;
+}

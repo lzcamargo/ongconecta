@@ -1,0 +1,234 @@
+# Entrega Contínua — PGC seções 6, 9 e 14
+#
+#   merge na main
+#     └─ preparar ............ calcula versão (SemVer), faz o build UMA vez
+#         ├─ staging ......... publica em  https://<usuario>.github.io/<repo>/staging/
+#         │    └─ produção ... AGUARDA APROVAÇÃO (Environment "production")
+#         │                    publica em https://<usuario>.github.io/<repo>/
+#         │                    cria tag vX.Y.Z + Release com notas (baseline)
+#         └─ mobile .......... gera o pacote de teste interno (simula TestFlight/Internal Testing)
+#
+# Tudo roda nos servidores do GitHub, então a rede restrita do laboratório
+# não interfere: o aluno só precisa acessar github.com pelo navegador.
+
+name: CD
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+# Nunca dois deploys ao mesmo tempo; o segundo espera o primeiro terminar.
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # publicar na branch gh-pages e criar tags/releases
+
+env:
+  NODE_VERSION: '22'
+  SITE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+
+jobs:
+  preparar:
+    name: Versão e build
+    runs-on: ubuntu-latest
+    outputs:
+      versao: ${{ steps.versao.outputs.versao }}
+      release: ${{ steps.versao.outputs.release }}
+      rotulo: ${{ steps.rotulo.outputs.rotulo }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # histórico completo: necessário para achar a última tag
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Calcular próxima versão a partir dos Conventional Commits
+        id: versao
+        env:
+          NOTAS_ARQUIVO: notas-release.md
+        run: node scripts/proxima-versao.mjs
+
+      - name: Definir rótulo exibido no site
+        id: rotulo
+        env:
+          VERSAO: ${{ steps.versao.outputs.versao }}
+          RELEASE: ${{ steps.versao.outputs.release }}
+        run: |
+          # Sem feat/fix desde a última tag, não há release nova: mostra versão + commit.
+          if [ "$RELEASE" = "true" ]; then
+            echo "rotulo=v$VERSAO" >> "$GITHUB_OUTPUT"
+          else
+            echo "rotulo=v$VERSAO+${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build da web (uma única vez — o mesmo artefato vai para staging e produção)
+        working-directory: web
+        env:
+          VITE_APP_VERSION: ${{ steps.rotulo.outputs.rotulo }}
+          VITE_API_URL: ${{ vars.API_URL }} # opcional: Settings -> Variables
+        run: |
+          npm ci
+          npm run build
+
+      - name: Guardar artefato (usado também para rollback por "Re-run")
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-dist
+          path: web/dist/
+          retention-days: 30
+
+      - name: Guardar notas de release
+        uses: actions/upload-artifact@v7
+        with:
+          name: notas-release
+          path: notas-release.md
+          retention-days: 30
+
+  staging:
+    name: Deploy em staging
+    needs: preparar
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ env.SITE }}/staging/
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: dist
+
+      - name: Publicar web em /staging (GitHub Pages)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: staging
+          keep_files: true # não apaga a produção que está na raiz
+          commit_message: 'deploy(staging): ${{ needs.preparar.outputs.rotulo }}'
+
+      - name: Deploy da API em staging (opcional — Render)
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_STAGING }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::notice::Secret RENDER_DEPLOY_HOOK_STAGING não configurado — deploy da API ignorado."
+          else
+            curl -fsS -X POST "$HOOK" > /dev/null && echo "Deploy da API solicitado ao Render."
+          fi
+
+      - name: Smoke test — a versão nova está no ar?
+        run: bash scripts/aguardar-deploy.sh "$SITE/staging/" dist
+
+  mobile:
+    name: Pacote de teste interno (mobile)
+    needs: preparar
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+
+      - name: Build via EAS (somente se EXPO_TOKEN estiver configurado)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::notice::EXPO_TOKEN não configurado — gerando apenas o bundle JS (modo laboratório)."
+          else
+            npx --yes eas-cli@latest build --platform android --profile preview --non-interactive --no-wait
+          fi
+
+      - name: Gerar bundle Android
+        run: npm run bundle
+        env:
+          EXPO_OFFLINE: '1'
+
+      - name: Publicar pacote de teste interno
+        uses: actions/upload-artifact@v7
+        with:
+          # Padrão de nome do PGC 4.2: <plataforma>-<versão>-<build>
+          name: android-${{ needs.preparar.outputs.versao }}-${{ github.run_number }}
+          path: mobile/dist/
+          retention-days: 30
+
+  producao:
+    name: Deploy em produção
+    needs: [preparar, staging]
+    runs-on: ubuntu-latest
+    # O Environment "production" tem "Required reviewers" = Desenvolvedor Líder.
+    # O job fica PAUSADO em "Waiting for review" até a aprovação (PGC 6.1, gate de release).
+    environment:
+      name: production
+      url: ${{ env.SITE }}/
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: notas-release
+          path: .
+
+      - name: Publicar web na raiz (GitHub Pages) — mesmo artefato validado em staging
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          keep_files: true # preserva a pasta /staging
+          commit_message: 'deploy(producao): ${{ needs.preparar.outputs.rotulo }}'
+
+      - name: Deploy da API em produção (opcional — Render)
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_PRODUCTION }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::notice::Secret RENDER_DEPLOY_HOOK_PRODUCTION não configurado — deploy da API ignorado."
+          else
+            curl -fsS -X POST "$HOOK" > /dev/null && echo "Deploy da API solicitado ao Render."
+          fi
+
+      - name: Smoke test — a versão nova está no ar?
+        run: bash scripts/aguardar-deploy.sh "$SITE/" dist
+
+      - name: Criar baseline — tag vX.Y.Z e Release com notas (PGC 9)
+        if: needs.preparar.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ needs.preparar.outputs.versao }}
+        run: |
+          # Em um "Re-run" (rollback) a tag já existe: não recria.
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::notice::Tag $TAG já existe — nada a fazer."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          gh release create "$TAG" --title "$TAG" --notes-file notas-release.md --verify-tag
+          echo "Baseline $TAG criada."

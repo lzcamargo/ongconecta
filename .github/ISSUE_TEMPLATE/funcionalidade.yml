@@ -1,0 +1,27 @@
+name: Funcionalidade
+description: Proponha uma nova funcionalidade ou melhoria
+title: 'feat: '
+labels: ['funcionalidade']
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qual necessidade da ONG isto atende?
+    validations:
+      required: true
+  - type: textarea
+    id: criterios
+    attributes:
+      label: Critérios de aceitação
+      placeholder: |
+        - [ ] O voluntário consegue...
+        - [ ] O sistema impede...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options: [web, api, mobile, pipeline/infra]
+    validations:
+      required: true

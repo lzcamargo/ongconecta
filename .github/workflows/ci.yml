@@ -1,0 +1,180 @@
+# Integração Contínua — PGC seção 5
+#
+# Roda em todo Pull Request para a main. Cada parte (api, web, mobile) só é
+# testada se a pasta dela mudou (PGC 5: "pipelines disparados condicionalmente").
+#
+# IMPORTANTE para a proteção da branch (Exercício 1.2):
+# marque como obrigatório SOMENTE o check "CI / ci-ok". Se você marcar
+# "CI / web" e um PR alterar só /api, o check "web" nunca roda e o PR fica
+# travado para sempre esperando por ele. O job ci-ok resolve isso: ele sempre
+# roda e só fica verde se nenhum job falhou.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # permite rodar manualmente pela aba Actions
+
+# Um PR novo cancela a execução anterior do mesmo PR (economiza minutos).
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  mudancas:
+    name: Detectar pastas alteradas
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      api: ${{ steps.filtro.outputs.api }}
+      web: ${{ steps.filtro.outputs.web }}
+      mobile: ${{ steps.filtro.outputs.mobile }}
+      infra: ${{ steps.filtro.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filtro
+        with:
+          filters: |
+            api:
+              - 'api/**'
+            web:
+              - 'web/**'
+            mobile:
+              - 'mobile/**'
+            infra:
+              - '.github/**'
+              - 'scripts/**'
+
+  api:
+    name: api
+    needs: mudancas
+    # Mudança nos workflows/scripts também testa tudo: o pipeline é item de configuração.
+    if: needs.mudancas.outputs.api == 'true' || needs.mudancas.outputs.infra == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Instalar dependências (exatamente as do lockfile)
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Testes + quality gate de cobertura (>= 60%)
+        run: npm run test:coverage
+      - name: Análise de dependências (SCA) — bloqueia vulnerabilidade crítica
+        run: npm audit --omit=dev --audit-level=critical
+      - name: Publicar relatório de cobertura
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cobertura-api
+          path: api/coverage/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  web:
+    name: web
+    needs: mudancas
+    if: needs.mudancas.outputs.web == 'true' || needs.mudancas.outputs.infra == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Testes + quality gate de cobertura (>= 60%)
+        run: npm run test:coverage
+      - name: Análise de dependências (SCA)
+        run: npm audit --omit=dev --audit-level=critical
+      - name: Build
+        run: npm run build
+      - name: Publicar build para revisão (baixe na aba Actions)
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-pr-${{ github.event.pull_request.number || 'manual' }}
+          path: web/dist/
+          retention-days: 7
+
+  mobile:
+    name: mobile
+    needs: mudancas
+    if: needs.mudancas.outputs.mobile == 'true' || needs.mudancas.outputs.infra == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Testes + quality gate de cobertura (>= 60%)
+        run: npm run test:coverage
+      - name: Análise de dependências (SCA)
+        run: npm audit --omit=dev --audit-level=critical
+      - name: Build do bundle Android (valida que o app compila, sem conta Expo)
+        run: npm run bundle
+        env:
+          EXPO_OFFLINE: '1'
+
+  scripts:
+    name: scripts
+    needs: mudancas
+    if: needs.mudancas.outputs.infra == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Testes do script de versionamento
+        run: node --test scripts/proxima-versao.test.mjs
+
+  ci-ok:
+    name: ci-ok
+    # always(): roda mesmo quando os jobs acima foram pulados ou falharam.
+    if: always()
+    needs: [mudancas, api, web, mobile, scripts]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conferir resultado dos jobs
+        env:
+          RESULTADOS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Resultados: $RESULTADOS"
+          for r in $RESULTADOS; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::Algum job do CI falhou — merge bloqueado (PGC 5.2)."
+              exit 1
+            fi
+          done
+          echo "Todos os jobs necessários passaram ou foram pulados por não haver mudança."

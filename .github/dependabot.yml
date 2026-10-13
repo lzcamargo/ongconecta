@@ -1,0 +1,52 @@
+# Dependabot — PGC seção 13 (dependências de terceiros como itens de configuração)
+# Abre PRs semanais de atualização; eles passam pelo mesmo CI e revisão dos demais.
+# O prefixo "chore(deps)" faz o título passar no check de Conventional Commits.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /api
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'chore(deps)'
+    groups:
+      dev-dependencies:
+        dependency-type: development
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'chore(deps)'
+    groups:
+      dev-dependencies:
+        dependency-type: development
+
+  - package-ecosystem: npm
+    directory: /mobile
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'chore(deps)'
+    # Expo exige versões casadas de react/react-native: atualize pelo SDK, não pacote a pacote.
+    ignore:
+      - dependency-name: 'react'
+      - dependency-name: 'react-native'
+      - dependency-name: 'expo*'
+        update-types: ['version-update:semver-major']
+
+  # As próprias actions usadas nos workflows também são dependências.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'ci'

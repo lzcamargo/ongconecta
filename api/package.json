@@ -1,0 +1,40 @@
+{
+  "name": "ongconecta-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API da ONGConecta (cadastro de doações e voluntários)",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "lint": "eslint .",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/server.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 60
+      }
+    }
+  },
+  "dependencies": {
+    "express": "^4.22.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^15.15.0",
+    "jest": "^29.7.0",
+    "supertest": "^7.3.1"
+  }
+}
