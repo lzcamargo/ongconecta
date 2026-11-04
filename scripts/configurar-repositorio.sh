@@ -29,11 +29,11 @@ echo
 passo() { echo "==> $1"; }
 
 # 1. Merge apenas por squash: o título do PR vira o commit na main (Conventional Commits).
-passo "Merge somente por squash, título do PR como mensagem, apagar branch após merge"
+passo "Merge somente por squash, título do PR como mensagem, apagar branch após merge, merge automático"
 gh api -X PATCH "repos/$REPO" \
   -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false \
   -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=PR_BODY \
-  -F delete_branch_on_merge=true > /dev/null
+  -F delete_branch_on_merge=true -F allow_auto_merge=true > /dev/null
 
 # 2. Habilitar Actions (em forks elas vêm DESLIGADAS por padrão).
 passo "Habilitando GitHub Actions"

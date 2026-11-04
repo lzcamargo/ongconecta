@@ -1,6 +1,6 @@
 # 0003 — Revisão por pares no repositório de referência
 
-- Status: aceito
+- Status: substituído pelo [ADR 0004](0004-revisor-permanente-no-repositorio-de-referencia.md) em 04/11/2026
 - Data: 13/10/2026
 
 ## Contexto
