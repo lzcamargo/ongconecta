@@ -1,0 +1,13 @@
+# Revisores automáticos por área (PGC 2 e 5.2).
+#
+# Na ONGConecta, @dsp789 é o revisor permanente (ADR 0004): é chamado em todo PR.
+# Mudanças em pipelines, scripts de deploy e dependências são de maior risco:
+# o Desenvolvedor Líder (@lzcamargo) também é chamado.
+#
+# Ao copiar para o SEU projeto: troque @dsp789 pelo usuário do seu par de revisão
+# e @lzcamargo pelo seu usuário. Vale a ÚLTIMA linha que casar com o arquivo.
+
+*                    @dsp789
+/.github/            @lzcamargo @dsp789
+/scripts/            @lzcamargo @dsp789
+**/package.json      @lzcamargo @dsp789
