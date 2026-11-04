@@ -1,0 +1,75 @@
+# MODELO DE CI — Java com Maven (Spring Boot, Jakarta, desktop...)
+#
+# Copie para o SEU repositório como:  .github/workflows/ci.yml
+# Depois ajuste as linhas marcadas com  # <-- AJUSTE
+#
+# O quality gate de cobertura fica no pom.xml (plugin JaCoCo) — veja o trecho
+# pronto na seção "Java" da Aula 2. Com ele, `mvn verify` falha abaixo de 60%.
+#
+# Usa Gradle? Troque os comandos por:  ./gradlew build  (testes + jacocoTestCoverageVerification)
+#
+# Na proteção da main, marque como obrigatórios SOMENTE:  ci-ok  e  titulo-pr
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qualidade:
+    name: Compilação, testes e cobertura
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: . # <-- AJUSTE se o pom.xml estiver numa subpasta
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21' # <-- AJUSTE para a versão do seu pom.xml
+          cache: maven
+
+      - name: Lint (avisos do compilador viram erro)
+        run: mvn -B -q compile -Dmaven.compiler.showWarnings=true -Dmaven.compiler.failOnWarning=true
+
+      - name: Testes + quality gate de cobertura (PGC 5.3)
+        run: mvn -B verify # roda testes e o jacoco:check configurado no pom.xml
+
+  dependencias:
+    name: Análise de dependências (SCA)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: critical
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [qualidade, dependencias]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conferir resultado dos jobs
+        env:
+          RESULTADOS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Resultados: $RESULTADOS"
+          for r in $RESULTADOS; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::Algum job do CI falhou — merge bloqueado (PGC 5.2)."
+              exit 1
+            fi
+          done
