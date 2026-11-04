@@ -1,0 +1,79 @@
+# MODELO DE CI — Python (Flask, FastAPI, Django, scripts...)
+#
+# Copie para o SEU repositório como:  .github/workflows/ci.yml
+# Depois ajuste as linhas marcadas com  # <-- AJUSTE
+#
+# Na proteção da main, marque como obrigatórios SOMENTE:  ci-ok  e  titulo-pr
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qualidade:
+    name: Lint e testes
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: . # <-- AJUSTE se o código estiver numa subpasta (ex.: backend)
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12' # <-- AJUSTE se o projeto exigir outra versão
+          cache: pip
+          cache-dependency-path: requirements.txt # <-- AJUSTE junto com working-directory (ex.: backend/requirements.txt)
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt   # <-- AJUSTE: versões fixas (==) garantem builds iguais
+          pip install ruff pytest pytest-cov
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Testes + quality gate de cobertura >= 60% (PGC 5.3)
+        # --cov=. mede todo o projeto; troque pelo nome do seu pacote (ex.: --cov=app) para medir só o código.
+        # "python -m pytest" (e não só "pytest") coloca a pasta do projeto no caminho de importação:
+        # sem isso, "from app import ..." nos testes falha com ModuleNotFoundError.
+        run: python -m pytest --cov=. --cov-report=term-missing --cov-fail-under=60 # <-- AJUSTE
+
+  dependencias:
+    name: Análise de dependências (SCA)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: critical
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [qualidade, dependencias]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conferir resultado dos jobs
+        env:
+          RESULTADOS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Resultados: $RESULTADOS"
+          for r in $RESULTADOS; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::Algum job do CI falhou — merge bloqueado (PGC 5.2)."
+              exit 1
+            fi
+          done
