@@ -48,6 +48,7 @@ jobs:
         # --cov=. mede todo o projeto; troque pelo nome do seu pacote (ex.: --cov=app) para medir só o código.
         # "python -m pytest" (e não só "pytest") coloca a pasta do projeto no caminho de importação:
         # sem isso, "from app import ..." nos testes falha com ModuleNotFoundError.
+        # Com poucos testes, troque 60 pelo valor atual do projeto e abra a Issue de desvio (Aula 2, passo 3).
         run: python -m pytest --cov=. --cov-report=term-missing --cov-fail-under=60 # <-- AJUSTE
 
   dependencias:
