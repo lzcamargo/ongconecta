@@ -12,7 +12,7 @@ aparece na tabela abaixo.
 | 1 | Preparar o repositório do seu projeto | 2, 3.2, 3.3, 4.1 | <!-- aula-1 --> [**liberada**](aula-1-repositorio.md) |
 | 2 | Integração Contínua no seu projeto | 4.2, 5 | <!-- aula-2 --> [**liberada**](aula-2-integracao-continua.md) |
 | 3 | Entrega Contínua: staging, aprovação, baseline e rollback | 3.3, 6, 9 | <!-- aula-3 --> em breve |
-| 4 | Governança: dependências, mudanças de alto risco e rastreabilidade | 8.2, 10, 12, 13 | <!-- aula-4 --> em breve |
+| 4 | Governança: dependências, mudanças de alto risco e rastreabilidade | 8.2, 10, 12, 13 | <!-- aula-4 --> [**liberada**](aula-4-governanca.md) |
 
 ## Como trabalhar
 
