@@ -8,6 +8,10 @@ dependências, e só entra na `main` com tudo verde e aprovado pelo seu par.
 
 **Pré-requisito:** Aula 1 concluída (`main` protegida, par de revisão com acesso).
 
+**Terminal no laboratório:** as máquinas são Windows. Use o **Git Bash** (botão direito
+na pasta → *Open Git Bash here*); o PowerShell padrão não aceita `&&` e bloqueia o `npm`.
+Detalhes na seção 0 do [guia do laboratório](../laboratorio-rede-restrita.md).
+
 **Referência:** [.github/workflows/ci.yml](../../.github/workflows/ci.yml) da ONGConecta
 (três pastas, cada uma testada só quando muda) e [ADR 0002](../adr/0002-check-agregador-ci-ok.md).
 
@@ -47,13 +51,28 @@ Todos têm o mesmo formato da ONGConecta:
 
 ## 3. Seu app precisa ter lint e testes
 
-Sem testes, o CI não protege nada. Se o seu app ainda não tem:
+Sem testes, o CI não protege nada, e sem **nenhum** teste ele falha logo de saída
+(Jest e Vitest: *"No tests found"*; pytest: *"no tests ran"*). Se o seu app ainda não tem:
 
 - configure o linter da stack (tabela do passo 1);
-- escreva **pelo menos 3 testes** das regras de negócio mais importantes (validações,
-  cálculos). Teste funções, não telas: é mais fácil e mais estável.
+- escreva **pelo menos 1 teste de fumaça**: um teste simples que chama uma função real do
+  seu app (um cálculo, uma validação) e confere o resultado. Mais testes de regra de
+  negócio contam mais na avaliação. Teste funções, não telas: é mais fácil e mais estável.
 
-### Quality gate de cobertura (PGC 5.3: mínimo de 60%)
+Modelos prontos para copiar, com uma linha a ajustar:
+
+| Stack | Modelo | Instalar |
+|---|---|---|
+| Node com Jest (`require`) | [fumaca-jest.test.js](modelos/testes/fumaca-jest.test.js) | `npm install --save-dev jest`; script `"test": "jest"` |
+| Node com Vitest (`import`) | [fumaca-vitest.test.js](modelos/testes/fumaca-vitest.test.js) | `npm install --save-dev vitest @vitest/coverage-v8`; script `"test": "vitest run"` |
+| Python | [test_fumaca.py](modelos/testes/test_fumaca.py) | já vem no `ci-python.yml`; crie `__init__.py` na pasta do código |
+| Java Maven | [FumacaTest.java](modelos/testes/FumacaTest.java) | dependência `org.junit.jupiter:junit-jupiter` (scope `test`) |
+
+### Quality gate de cobertura (PGC 5.3: mínimo de 60%, opcional nesta aula)
+
+Com poucos testes, a cobertura provavelmente fica abaixo de 60%. Nesta aula o limite é
+**opcional**; se não chegar lá, siga o parágrafo "Seu projeto está abaixo de 60%?" no fim
+desta seção. No Python, troque o `--cov-fail-under=60` do `ci.yml` pelo valor atual.
 
 O limite fica na configuração do runner de testes, não no YAML:
 
@@ -146,7 +165,7 @@ Ainda com o PR aberto, provoque **três** falhas, uma de cada vez, e corrija cad
 |---|---|
 | Mude o título do PR para `ajustes` | `titulo-pr` |
 | Deixe uma variável declarada e não usada | `qualidade` → Lint |
-| Inverta a condição de uma regra testada (ex.: `>` vira `<`) | `qualidade` → Testes |
+| Mude o valor esperado no seu teste (ex.: `5` vira `6`) | `qualidade` → Testes |
 
 Guarde o link de cada execução que falhou (aba **Actions**): são evidências da entrega.
 
@@ -179,7 +198,7 @@ mensagem para decidir a próxima versão. O que acontece se alguém aprovar um P
 - [ ] `ci.yml` com lint, testes, quality gate de cobertura e análise de dependências.
 - [ ] `pr-titulo.yml` presente e funcionando.
 - [ ] `ci-ok` e `titulo-pr` obrigatórios na proteção da `main`.
-- [ ] Pelo menos 3 testes de regra de negócio; limite de 60% configurado, ou Issue registrando o desvio.
+- [ ] Pelo menos 1 teste passando (de fumaça ou de regra de negócio); limite de 60% configurado, ou Issue registrando o desvio.
 - [ ] Três falhas provocadas e corrigidas, com links.
 - [ ] PR revisado pelo par, com comentário respondido, e mesclado por squash.
 - [ ] Revisão feita no repositório do par.
@@ -195,4 +214,6 @@ mensagem para decidir a próxima versão. O que acontece se alguém aprovar um P
 | `dependencias` falha: *Dependency review is not supported* | o repositório está privado; torne-o público |
 | Lint reprova arquivos gerados (`dist/`, `build/`) | adicione a pasta aos `ignores` da configuração do linter |
 | O ESLint reclama de `process`/`console` em `scripts/` | a configuração está só para navegador; inclua os globais do Node para essa pasta |
-| `npm install` não funciona no laboratório | configure o proxy ([guia](../laboratorio-rede-restrita.md)) ou siga pelo caminho C: o CI roda os testes por você |
+| *"O token '&&' não é um separador de instruções válido"* | você está no Windows PowerShell 5; use o Git Bash, ou rode um comando por linha |
+| *"a execução de scripts foi desabilitada neste sistema"* ao rodar `npm` | use `npm.cmd` no lugar de `npm`, ou o Git Bash |
+| `npm install` não funciona fora do laboratório (casa, trabalho) | configure o proxy dessa rede ([guia](../laboratorio-rede-restrita.md)) ou siga pelo caminho C: o CI roda os testes por você |

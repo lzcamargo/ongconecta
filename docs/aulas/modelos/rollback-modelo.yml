@@ -1,0 +1,68 @@
+# MODELO DE ROLLBACK — qualquer stack (PGC 6.4)
+#
+# Copie para o SEU repositório como:  .github/workflows/rollback.yml  (não precisa ajustar nada)
+#
+# Aba Actions -> "Rollback" -> Run workflow -> tag (ex.: v1.2.0).
+# NÃO recompila: usa o pacote anexado à Release daquela tag — a própria baseline.
+#   - marca a Release escolhida como "Latest" (a versão oficial volta a ser ela)
+#   - se PUBLICAR_PAGES = true, republica o site daquela versão
+# Passa pelo mesmo gate de aprovação do Environment "production".
+
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag da versão para a qual voltar (ex.: v1.2.0)'
+        required: true
+        type: string
+
+concurrency:
+  group: cd-refs/heads/main # mesma fila do CD: nunca roda junto com um deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  rollback:
+    name: Rollback para ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.tag }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Validar tag e baixar o pacote da Release
+        run: |
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || {
+            echo "::error::Tag inválida: use o formato vX.Y.Z"; exit 1; }
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.zip' --dir entrega
+          ls entrega
+
+      - name: Marcar a Release como a versão oficial (Latest)
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
+
+      - name: Extrair site
+        if: vars.PUBLICAR_PAGES == 'true'
+        run: mkdir site && unzip -q entrega/*.zip -d site
+      - name: Republicar site (GitHub Pages)
+        if: vars.PUBLICAR_PAGES == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: true
+          commit_message: 'rollback(producao): ${{ inputs.tag }}'
+
+      - name: Registrar no resumo (auditoria — PGC 10.3)
+        run: |
+          {
+            echo "## Rollback executado"
+            echo "- Versão oficial voltou para **$TAG**"
+            echo "- Solicitado por: @$GITHUB_ACTOR"
+            echo "- Próximo passo: abrir uma Issue com o motivo e corrigir a main (revert ou fix via PR)."
+          } >> "$GITHUB_STEP_SUMMARY"
